@@ -53,11 +53,11 @@ In the **Cournot Competition Problem**, \(N\) agents produce different types of 
 
 - Each agent decides how much energy to produce.  
 - There are **shared equality constraints** on total market demand.  
-- The objective for each agent is to minimize its cost:  
+- The objective for each agent is to minimize its cost:  <br>
 
-  \[
+  $$
   f_v(z_v, z_{-v}) = c_v(z_v) - r_v(z_v, z_{-v})
-  \]
+  $$
 
   where \(c_v\) is the production cost and $r_v$ is the revenue.  
 
