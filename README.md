@@ -36,7 +36,7 @@ In the **Robots Covering Problem**, each agent tracks its target while staying c
 - The individual cost for agent \(v\) is:  
 
   $$
-  f_v(z_v, z_{-v}) = \| z_v - T_v \|^2 + \rho_v \sum_{u \neq v} \| z_v - z_u \|^2
+  f_v(z_v, \mathbf{z}_{-v}) = \| z_v - T_v \|^2 + \rho_v \sum_{u \neq v} \| z_v - z_u \|^2
   $$
 
 - The space is partitioned into half-spaces, and to ensure coverage, the **group center must remain on the same side of the boundary** as the service region.  
@@ -56,7 +56,7 @@ In the **Cournot Competition Problem**, \(N\) agents produce different types of 
 - The objective for each agent is to minimize its cost: 
 
 $$
-f_v(z_v, z_{-v}) = c_v(z_v) - r_v(z_v, z_{-v})
+f_v(z_v, \mathbf{z}_{-v}) = c_v(z_v) - r_v(z_v, \mathbf{z}_{-v})
 $$
 
   where \(c_v\) is the production cost and \(r_v\) is the revenue.  
