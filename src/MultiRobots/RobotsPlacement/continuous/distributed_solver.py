@@ -1,9 +1,9 @@
 import numpy as np
-
-import src.MultiRobots.RobotsPlacement.continuous.primal_dual as cpd
 import matplotlib.pyplot as plt
 
-# -------------------- Experiment Harness (main) --------------------
+import src.MultiRobots.RobotsPlacement.continuous.primal_dual as cpd
+import src.MultiRobots.RobotsPlacement.continuous.consensus as cpc
+
 def _block_size(use_box: bool) -> int:
     """Per-agent state block size."""
     return 6 if use_box else 2
@@ -92,5 +92,67 @@ def run_experiments(
     # ---------- Pretty plot using your helper (optional) ----------
     if plot_fn is not None:
         plot_fn(X_first, A, C, colors, r=r, GNEs=GNEs, lims=lims, name=plot_name)
+
+    return t_first, X_first, GNEs
+
+
+def run_experiments_adaptive_eq(
+    Agent, Center, C, rho, A,
+    r=None,                      # used only for projection in the dynamics
+    gamma=None,
+    seeds=(0,1,2,3,4),
+    Tmax=100.0, TimeStamp=100_000,
+    plot_fn=None, plot_name="Trajectories_adaptive_eq",
+    colors=None, lims=None,
+    rtol=1e-6, atol=1e-8,
+):
+    K = 5
+    order = list(Agent.keys())
+    n = len(order)
+
+    if colors is None:
+        colors = ["blue","blueviolet","cadetblue","cornflowerblue","darkblue",
+                  "darkslateblue","deepskyblue","dodgerblue","mediumblue",
+                  "mediumslateblue","midnightblue","powderblue","royalblue",
+                  "skyblue","slateblue","steelblue"]
+    if lims is None:
+        lims = [[-4, 2], [-2, 2]]
+
+    # First run from zero init
+    L = K*n + sum(2*len(Agent[v]) for v in Agent)
+    y0 = np.zeros(L, dtype=float)
+    t_first, X_first = cpc.solve_adaptive_eq(
+        Agent, Center, C, rho, A, r=r, gamma=gamma,
+        Tmax=Tmax, TimeStamp=TimeStamp,
+        x_init=y0, seed=seeds[0] if seeds else None,
+        rtol=rtol, atol=atol
+    )
+
+    # Collect terminal positions
+    GNEs = {v: [X_first[-1, K*i:K*i+2]] for i, v in enumerate(order)}
+
+    # Additional runs
+    for s in seeds[1:]:
+        x_init = cpc.make_init_eq(Agent, seed=int(s))
+        t, X = cpc.solve_adaptive_eq(
+            Agent, Center, C, rho, A, r=r, gamma=gamma,
+            Tmax=Tmax, TimeStamp=TimeStamp,
+            x_init=x_init, seed=int(s),
+            rtol=rtol, atol=atol
+        )
+        # Per-run simple trace (optional)
+        plt.figure(figsize=(8, 3))
+        plt.plot(t, X)
+        plt.title(f"State traces (seed={s})")
+        plt.xlabel("t")
+        plt.ylabel("state components")
+        plt.tight_layout()
+
+        for i, v in enumerate(order):
+            GNEs[v].append(X[-1, K*i:K*i+2])
+
+    # Plot using your function: pass r=None so it uses k=2 indexing
+    if plot_fn is not None:
+        plot_fn(X_first, A, C, colors, r=None, GNEs=GNEs, name=plot_name, lims=lims)
 
     return t_first, X_first, GNEs

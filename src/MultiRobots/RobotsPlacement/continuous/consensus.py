@@ -1,25 +1,36 @@
+# adaptive_eq.py
 import numpy as np
+from typing import Dict, Optional, Tuple
+from scipy.integrate import solve_ivp
 
 # ---------- helpers ----------
-def neighbors_of(v, Agent, Center):
-    """Agents that share at least one constraint with v (no duplicates, no self)."""
+def neighbors_of(v, Agent: Dict, Center: Dict):
     neigh = set()
     for c in Agent[v]:
         neigh.update(Center[c])
     neigh.discard(v)
     return list(neigh)
 
-def build_layout_adaptive_with_z(Agent, use_box: bool):
+def block_size() -> int:
+    """Per-agent block (no μ): [x, y, k, z_x, z_y] -> K = 5"""
+    return 5
+
+def idx_maps(K=5):
+    def ix(v):  return K*v
+    def iy(v):  return K*v + 1
+    def ik(v):  return K*v + 2
+    def izx(v): return K*v + 3
+    def izy(v): return K*v + 4
+    return ix, iy, ik, izx, izy
+
+def build_layout_with_z(Agent: Dict):
     """
-    Per-agent block (K scalars):
-      if use_box: [ x, y, mu_x+, mu_x-, mu_y+, mu_y-,  k,  z_x, z_y ]  -> K = 9
-      else:       [ x, y,                                   k,  z_x, z_y ]  -> K = 5
-    Then all local lambdas λ_{v,c}^x, λ_{v,c}^y stacked (for c in Agent[v], v in Agent).
+    State: [for v: x,y,k,zx,zy], then all local lambdas λ_{v,c}^x, λ_{v,c}^y
     Returns: (K, lam_base, lam_idx, total_len)
     """
     agents = list(Agent.keys())
     n = len(agents)
-    K = 9 if use_box else 5
+    K = block_size()
     lam_base = K * n
     lam_idx, off = {}, lam_base
     for v in agents:
@@ -29,148 +40,157 @@ def build_layout_adaptive_with_z(Agent, use_box: bool):
             off += 2
     return K, lam_base, lam_idx, off
 
-def idx_maps(K, use_box):
-    """Index helpers for a given K/use_box."""
-    def ix(v): return K*v
-    def iy(v): return K*v + 1
-    if use_box:
-        def imxp(v): return K*v + 2
-        def imxm(v): return K*v + 3
-        def imyp(v): return K*v + 4
-        def imym(v): return K*v + 5
-        def ik(v):   return K*v + 6
-        def izx(v):  return K*v + 7
-        def izy(v):  return K*v + 8
-        return ix, iy, imxp, imxm, imyp, imym, ik, izx, izy
-    else:
-        def ik(v):   return K*v + 2
-        def izx(v):  return K*v + 3
-        def izy(v):  return K*v + 4
-        return ix, iy, None, None, None, None, ik, izx, izy
+# ---------- projection onto L∞ box (directional) ----------
+def project_direction_box(x: np.ndarray, u: np.ndarray, A: np.ndarray, r: float, eps: float=0.0) -> np.ndarray:
+    """
+    Project direction u so that ẋ = u does not leave Ω = { |x-A|_∞ ≤ r }.
+    If x at upper bound in a coord and u pushes outward, zero that coord; similarly for lower bound.
+    """
+    out = u.copy()
+    # x-dimension
+    ubx, lbx = A[0] + r, A[0] - r
+    if x[0] >= ubx - eps and out[0] > 0: out[0] = 0.0
+    if x[0] <= lbx + eps and out[0] < 0: out[0] = 0.0
+    # y-dimension
+    uby, lby = A[1] + r, A[1] - r
+    if x[1] >= uby - eps and out[1] > 0: out[1] = 0.0
+    if x[1] <= lby + eps and out[1] < 0: out[1] = 0.0
+    return out
 
-# ---------- continuous-time RHS (Adaptive gains with local g_i and b_i) ----------
-def dynamics_adaptive_gi(
+# ---------- dynamics (Algorithm 2, equality; NO μ, NO λ-projection) ----------
+def dynamics(
     t, y,
-    Agent, Center, C, rho, A,
-    r=None,         # dict r[v] for L∞ boxes (optional)
-    gamma=None      # dict gamma[v] > 0 for k̇_v = gamma[v] * ||rho^v||^2 (default 1.0)
+    Agent: Dict, Center: Dict, C: Dict, rho: Dict, A: Dict,
+    r: Optional[Dict]=None,         # if None: unconstrained; else L∞ box per agent
+    gamma: Optional[Dict]=None      # k̇_v = γ_v ||ρ^v||^2
 ):
-    """
-    Adaptive-gain continuous-time primal-dual with consensus filter z_i and local g_i(x_i).
-
-    Objective:  f_v(x) = ρ_v||x_v - A_v||^2 + Σ_{u∈N(v)} ||x_v - x_u||^2
-    Local residual:  g_i(x_i) = Σ_{c∈Agent[v]} ( A_i x_v + b_i^c ),  with A_i=I,  b_i^c = -C[c]
-    Consensus filter:  ż_v = Σ_{j∈N(v)} (λ_v^tot - λ_j^tot)
-    Dual:  λ̇_v^tot = g_i(x_v) - z_v - Σ_{j∈N(v)} (λ_v^tot - λ_j^tot)
-           (applied identically to each local copy λ_{v,c})
-    No projection on λ.
-
-    Boxes (if r is given): μ dynamics via projected [h]_μ^+ and box force in ẋ.
-
-    Adaptive gain:
-      ρ^v := Σ_{j∈N(v)} (x_v - x_j)
-      k̇_v = γ_v ||ρ^v||^2
-      ẋ_v = -∇f_v(x) - λ_v^tot - Σ_{j∈N(v)} (k_v - k_j)(x_v - x_j) + box_term
-    """
-    use_box = r is not None
     agents = list(Agent.keys())
     n = len(agents)
     if gamma is None:
         gamma = {v: 1.0 for v in agents}
 
-    # layout & indices
-    K, lam_base, lam_idx, total_len = build_layout_adaptive_with_z(Agent, use_box)
-    ix, iy, imxp, imxm, imyp, imym, ik, izx, izy = idx_maps(K, use_box)
+    K, lam_base, lam_idx, total_len = build_layout_with_z(Agent)
+    ix, iy, ik, izx, izy = idx_maps(K)
 
-    # small accessors
     def xvec(v): return np.array([y[ix(v)], y[iy(v)]])
     def zvec(v): return np.array([y[izx(v)], y[izy(v)]])
 
     dy = np.zeros(total_len, dtype=float)
 
-    # --- Precompute aggregated lambdas per agent: λ_v^tot = Σ_c λ_{v,c} ---
+    # Precompute λ_v^tot = Σ_c λ_{v,c}
     lam_tot = {v: np.zeros(2) for v in agents}
     for v in agents:
         for c in Agent[v]:
             lam_tot[v] += np.array([y[lam_idx[(v,c,'x')]], y[lam_idx[(v,c,'y')]]])
 
-    # --- x, μ, k, z dynamics ---
+    # ----- primal x, adaptive k, consensus z -----
     for v in agents:
-        x_v = xvec(v)
-        N_v = neighbors_of(v, Agent, Center)
+        xv = xvec(v)
+        Nv = neighbors_of(v, Agent, Center)
 
-        # ∇f_v(x)
-        grad = 2*rho[v]*(x_v - np.array(A[v], dtype=float))
-        if len(N_v) > 0:
-            sum_u = np.sum([xvec(u) for u in N_v], axis=0)
-            grad += 2*(len(N_v)*x_v - sum_u)
+        # ∇ J_v(x) = 2 ρ_v (x_v - A_v) + 2( deg*x_v - Σ_{u∈N(v)} x_u )
+        grad = 2.0 * rho[v] * (xv - np.array(A[v], dtype=float))
+        if len(Nv) > 0:
+            sum_u = np.sum([xvec(u) for u in Nv], axis=0)
+            grad += 2.0 * (len(Nv) * xv - sum_u)
 
-        # local dual force: -λ_v^tot
-        lam_force = -lam_tot[v]
-
-        # adaptive consensus term:  -Σ_j (k_v - k_j)(x_v - x_j)
-        k_v = y[ik(v)]
+        # adaptive term  - Σ_j (k_v - k_j)(x_v - x_j)
+        kv = y[ik(v)]
         adapt = np.zeros(2)
-        for j in N_v:
-            k_j = y[ik(j)]
-            adapt += (k_v - k_j) * (x_v - xvec(j))
+        for j in Nv:
+            kj = y[ik(j)]
+            adapt += (kv - kj) * (xv - xvec(j))
         adapt = -adapt
 
-        # box term via μ (if used)
-        box_term = np.zeros(2)
-        if use_box:
-            mu_xp, mu_xm = y[imxp(v)], y[imxm(v)]
-            mu_yp, mu_ym = y[imyp(v)], y[imym(v)]
-            box_term = np.array([-mu_xp + mu_xm, -mu_yp + mu_ym])
+        # dual force  - λ_v^tot   (since ∂g_v/∂x_v = I when g_v(x_v)=x_v + b)
+        dual_force = -lam_tot[v]
 
-        xdot = -grad + lam_force + adapt + box_term
-        dy[ix(v)] = xdot[0]
-        dy[iy(v)] = xdot[1]
+        # raw direction before projection
+        u = -grad + dual_force + adapt
 
-        # μ̇ = [h]_μ^+ (projected dynamics for L∞ box)
-        if use_box:
-            ax, ay, rv = A[v][0], A[v][1], r[v]
-            hxp = x_v[0] - (ax + rv)          # ≤ 0
-            hxm = -(x_v[0] - (ax - rv))       # ≤ 0
-            hyp = x_v[1] - (ay + rv)          # ≤ 0
-            hym = -(x_v[1] - (ay - rv))       # ≤ 0
-            dy[imxp(v)] = (hxp > 0.0 or y[imxp(v)] > 0.0) * hxp
-            dy[imxm(v)] = (hxm > 0.0 or y[imxm(v)] > 0.0) * hxm
-            dy[imyp(v)] = (hyp > 0.0 or y[imyp(v)] > 0.0) * hyp
-            dy[imym(v)] = (hym > 0.0 or y[imym(v)] > 0.0) * hym
+        # projection onto Ω_v if r is given
+        if r is not None:
+            u = project_direction_box(xv, u, np.array(A[v], dtype=float), float(r[v]))
+
+        dy[ix(v)] = u[0]
+        dy[iy(v)] = u[1]
 
         # ρ^v and k̇_v
-        rho_v = np.sum([x_v - xvec(j) for j in N_v], axis=0) if len(N_v) > 0 else np.zeros(2)
-        dy[ik(v)] = gamma[v] * float(np.dot(rho_v, rho_v))
+        rho_v = np.sum([xv - xvec(j) for j in Nv], axis=0) if len(Nv) > 0 else np.zeros(2)
+        dy[ik(v)] = gamma[v] * float(rho_v @ rho_v)
 
         # ż_v = Σ_j (λ_v^tot - λ_j^tot)
         zdot = np.zeros(2)
-        for j in N_v:
+        for j in Nv:
             zdot += (lam_tot[v] - lam_tot[j])
         dy[izx(v)] = zdot[0]
         dy[izy(v)] = zdot[1]
 
-    # --- λ̇: local g_i(x_i) - z_i - Σ_j (λ_i - λ_j)  (no projection) ---
-    # Build local g_i(x_i) with A_i=I and b_i^c=-C[c]; sum over c∈Agent[v]
+    # ----- λ̇: g_v(x_v) - z_v - Σ_j (λ_v - λ_j)  (NO projection; equality setting) -----
     for v in agents:
-        x_v = xvec(v)
-        N_v = neighbors_of(v, Agent, Center)
+        xv = xvec(v)
+        Nv = neighbors_of(v, Agent, Center)
 
+        # local residual g_v(x_v) = Σ_{c∈Agent[v]} (I*x_v + b_v^c)
+        # with b_v^c = -C[c] (your choice)
         b_sum = np.zeros(2)
         for c in Agent[v]:
-            b_sum += -np.array(C[c], dtype=float)   # b_i^c = -C[c]
-        g_i = len(Agent[v]) * x_v + b_sum           # Σ_c (I x_v + b_i^c)
+            b_sum += -np.array(C[c], dtype=float)
+        g_v = len(Agent[v]) * xv + b_sum
 
-        # consensus term on λ_tot
-        cons = np.zeros(2)
-        for j in N_v:
-            cons += (lam_tot[v] - lam_tot[j])
+        consensus = np.zeros(2)
+        for j in Nv:
+            consensus += (lam_tot[v] - lam_tot[j])
 
-        lam_tot_dot = g_i - zvec(v) - cons
+        lam_tot_dot = g_v - zvec(v) - consensus
 
-        # apply same λ̇_i^tot to each local copy (v,c)
+        # apply same derivative to each local copy (v,c)
         for c in Agent[v]:
             dy[lam_idx[(v,c,'x')]] = lam_tot_dot[0]
             dy[lam_idx[(v,c,'y')]] = lam_tot_dot[1]
 
     return dy
+
+
+# from adaptive_eq import dynamics_adaptive_eq, build_layout_with_z, block_size
+
+def total_state_len(Agent: Dict) -> int:
+    K = block_size()
+    n = len(Agent)
+    num_lams = sum(2 * len(Agent[v]) for v in Agent)
+    return K * n + num_lams
+
+def make_init_eq(Agent: Dict, low=-3.0, high=1.0, seed: Optional[int]=None) -> np.ndarray:
+    if seed is not None:
+        np.random.seed(seed)
+    L = total_state_len(Agent)
+    return low + (high - low) * np.random.rand(L)
+
+def solve_adaptive_eq(
+    Agent: Dict, Center: Dict, C: Dict, rho: Dict, A: Dict,
+    r: Optional[Dict]=None, gamma: Optional[Dict]=None,
+    Tmax: float=100.0, TimeStamp: int=100_000,
+    x_init: Optional[np.ndarray]=None, seed: Optional[int]=None,
+    rtol: float=1e-6, atol: float=1e-8, max_step: Optional[float]=None
+) -> Tuple[np.ndarray, np.ndarray]:
+    if x_init is None:
+        x_init = make_init_eq(Agent, seed=seed)
+
+    y0 = np.asarray(x_init, dtype=float).reshape(-1)
+
+    t_eval = np.linspace(0.0, Tmax, int(TimeStamp))
+    if max_step is None:
+        max_step = Tmax / (20 * TimeStamp) * 100.0
+
+    sol = solve_ivp(
+        fun=dynamics,
+        t_span=(0.0, Tmax),
+        y0=y0,
+        t_eval=t_eval,
+        args=(Agent, Center, C, rho, A, r, gamma),
+        rtol=rtol, atol=atol, max_step=max_step, vectorized=False
+    )
+    if not sol.success:
+        raise RuntimeError(f"solve_ivp failed: {sol.message}")
+
+    return sol.t, sol.y.T
