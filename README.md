@@ -34,9 +34,11 @@ Each agent’s cost function includes a private penalty term to trade off betwee
 In the **Robots Covering Problem**, each agent tracks its target while staying close to others for communication.  
 
 - The individual cost for agent \(v\) is:  
+
   $$
   f_v(z_v, z_{-v}) = \| z_v - T_v \|^2 + \rho_v \sum_{u \neq v} \| z_v - z_u \|^2
   $$
+
 - The space is partitioned into half-spaces, and to ensure coverage, the **group center must remain on the same side of the boundary** as the service region.  
 
 <p align="center">
@@ -52,9 +54,11 @@ In the **Cournot Competition Problem**, \(N\) agents produce different types of 
 - Each agent decides how much energy to produce.  
 - There are **shared equality constraints** on total market demand.  
 - The objective for each agent is to minimize its cost:  
+
   $$
   f_v(z) = c_v(z_v) - r_v(z_v, \mathbf{z}_{-v}),
   $$
+  
   where $c_v$ is the production cost and $r_v$ is the revenue.  
 
 The game leads to a **Generalized Nash Equilibrium (GNE)** where production levels satisfy both individual constraints and market-wide equality constraints.  
