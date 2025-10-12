@@ -58,8 +58,8 @@ In the **Cournot Competition Problem**, \(N\) agents produce different types of 
   $$
   f_v(z) = c_v(z_v) - r_v(z_v, \mathbf{z}_{-v}),
   $$
-  
-  where $c_v$ is the production cost and $r_v$ is the revenue.  
+
+where \(c_v\) is the production cost and $r_v$ is the revenue.  
 
 The game leads to a **Generalized Nash Equilibrium (GNE)** where production levels satisfy both individual constraints and market-wide equality constraints.  
 
