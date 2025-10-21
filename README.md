@@ -69,6 +69,13 @@ The game leads to a **Generalized Nash Equilibrium (GNE)** where production leve
 
 ---
 
+## Harker's Two Agent Game
+
+- Standard two agents Harker's Game.
+
+
+---
+
 ## 🛠️ Structure
 - `figures/` → contains images and gifs used in this README.  
 - `src/` → algorithms and simulation code.  
