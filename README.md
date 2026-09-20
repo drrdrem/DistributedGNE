@@ -3,10 +3,38 @@
 ## 🔎 Introduction
 This repository contains simulation code for our research works:
 
-- **CDC Paper**: *A DAG-Based Analysis of Fully Distributed Algorithms for Quadratic Generalized Nash Equilibrium Problems Without Consensus*  
-- **ACC Paper**: *Fully Distributed Generalized Nash Equilibrium Algorithms for Multi-Robot Placement without Consensus on Multipliers*  
+- **CDC 2026**: *Input-to-State Stability Framework for Fully Distributed Primal–Dual Dynamics for Quadratic GNEPs Without Multiplier Consensus*
+- **ACC (2026)**: *Fully Distributed Generalized Nash Equilibrium Algorithms for Multi-Robot Placement without Consensus on Multipliers*  
+- **CDC 2025**: *A DAG-Based Analysis of Fully Distributed Algorithms for Quadratic Generalized Nash Equilibrium Problems Without Consensus*  
 
 The implemented problems illustrate the effectiveness of distributed GNE algorithms in robotics and economic applications, showing how agents can coordinate decisions under shared constraints without requiring multiplier consensus.
+
+## Citation
+
+If you use this repository or build upon the algorithms and numerical examples provided here, please consider citing the corresponding papers:
+
+### BibTeX
+
+```bibtex
+@misc{yin2026iss,
+  title        = {Input-to-State Stability Framework for Fully Distributed Primal--Dual Dynamics for Quadratic GNEPs Without Multiplier Consensus},
+  author       = {Shao-An Yin},
+  year         = {2026},
+  eprint       = {2609.06983},
+  archivePrefix = {arXiv},
+  primaryClass = {math.OC},
+  note         = {Accepted to the 65th IEEE Conference on Decision and Control (CDC 2026)}
+}
+
+@inproceedings{yin2026fullydistributed,
+  title     = {Fully Distributed GNE Algorithms for Multi-Robot Placement without Consensus on Multipliers},
+  author    = {Shao-An Yin and Mingyi Hong and Nicola Elia},
+  booktitle = {2026 American Control Conference (ACC)},
+  pages     = {3633--3638},
+  year      = {2026},
+  publisher = {IEEE}
+}
+```
 
 ---
 
