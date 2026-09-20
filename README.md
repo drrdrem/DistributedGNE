@@ -3,9 +3,9 @@
 ## 🔎 Introduction
 This repository contains simulation code for our research works:
 
-- **CDC 2026**: *Input-to-State Stability Framework for Fully Distributed Primal–Dual Dynamics for Quadratic GNEPs Without Multiplier Consensus*
+- **CDC (2026)**: *Input-to-State Stability Framework for Fully Distributed Primal–Dual Dynamics for Quadratic GNEPs Without Multiplier Consensus*
 - **ACC (2026)**: *Fully Distributed Generalized Nash Equilibrium Algorithms for Multi-Robot Placement without Consensus on Multipliers*  
-- **CDC 2025**: *A DAG-Based Analysis of Fully Distributed Algorithms for Quadratic Generalized Nash Equilibrium Problems Without Consensus*  
+- **CDC (2025)**: *A DAG-Based Analysis of Fully Distributed Algorithms for Quadratic Generalized Nash Equilibrium Problems Without Consensus*  
 
 The implemented problems illustrate the effectiveness of distributed GNE algorithms in robotics and economic applications, showing how agents can coordinate decisions under shared constraints without requiring multiplier consensus.
 
@@ -99,7 +99,11 @@ The game leads to a **Generalized Nash Equilibrium (GNE)** where production leve
 
 ## Harker's Two Agent Game
 
-- Standard two agents Harker's Game.
+- The standard two-agent Harker's game, which illustrates the nonuniqueness and disconnectedness of the solution set.
+
+<p align="center">
+  <img src="figures/harker_game_solset.png" alt="Harker's Problem" width="500"/>
+</p>
 
 
 ---
